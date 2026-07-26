@@ -31,6 +31,7 @@ class PyBoyBackend:
         sym_path: str | Path | None = None,
         window: str = "null",
         cgb: bool = True,
+        emulation_speed: int | float = 0,
     ) -> None:
         try:
             from pyboy import PyBoy
@@ -43,6 +44,9 @@ class PyBoyBackend:
         if cgb is not None:
             kwargs["cgb"] = cgb
         self.pyboy = PyBoy(str(rom_path), **kwargs)
+        # PyBoy throttles tick() to real-time (~16.67ms/frame) unless told
+        # otherwise; 0 means unbounded, which is what headless training wants.
+        self.pyboy.set_emulation_speed(emulation_speed)
         self._pressed: set[str] = set()
 
     def reset(self) -> None:
@@ -64,8 +68,9 @@ class PyBoyBackend:
         self._pressed.clear()
 
     def advance(self, frames: int) -> None:
-        for _ in range(frames):
-            self.pyboy.tick()
+        if frames > 0:
+            # Single call; PyBoy renders only the last frame of the batch.
+            self.pyboy.tick(frames, True)
 
     def read_u8(self, address: int) -> int:
         return int(self.pyboy.memory[address]) & 0xFF
@@ -75,7 +80,9 @@ class PyBoyBackend:
         return int.from_bytes(data, endian)
 
     def read_bytes(self, address: int, length: int) -> bytes:
-        return bytes(self.read_u8(address + offset) for offset in range(length))
+        if length <= 0:
+            return b""
+        return bytes(self.pyboy.memory[address : address + length])
 
     def save_state(self) -> bytes:
         buffer = BytesIO()

@@ -98,22 +98,17 @@ class LadxStateExtractor:
         entities: list[dict[str, Any]],
         raw: dict[str, Any],
     ) -> None:
-        table_addresses = {
-            field: self.symbols.get(symbol)
-            for field, symbol in memory_map.ENTITY_TABLES.items()
-        }
-        raw["entity_tables"] = {}
-        for field, base in table_addresses.items():
+        tables: dict[str, list[int]] = {}
+        raw["entity_tables"] = tables
+        for field, symbol in memory_map.ENTITY_TABLES.items():
+            base = self.symbols.get(symbol)
             if base is not None:
-                raw["entity_tables"][field] = list(backend.read_bytes(base, MAX_ENTITIES))
+                tables[field] = list(backend.read_bytes(base, MAX_ENTITIES))
 
         for slot in range(MAX_ENTITIES):
             entity: dict[str, Any] = {"slot": slot, "private": {}}
-            for field, base in table_addresses.items():
-                if base is None:
-                    continue
-                value = backend.read_u8(base + slot)
-                _set_path(entity, field, value)
+            for field, values in tables.items():
+                _set_path(entity, field, values[slot])
             status = entity.get("status", 0)
             entity_type = entity.get("type")
             entity["enabled"] = status != 0
